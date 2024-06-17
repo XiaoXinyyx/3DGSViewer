@@ -17,7 +17,7 @@ VertexPositionInputs TransformVertexPositions(float3 positionOS)
 }
 
 
-float Dither8x8Random_float(float2 ScreenPosition, float2 RandomOffset)
+float Dither8x8Random_float(float2 ScreenPosition, uint2 RandomOffset)
 {
 	// RandomOffset : random value to offset the dithering pattern in pixel space
 	//                Must be greater than 0
@@ -38,7 +38,7 @@ float Dither8x8Random_float(float2 ScreenPosition, float2 RandomOffset)
 		43.0 / 65.0, 27.0 / 65.0, 39.0 / 65.0, 23.0 / 65.0, 42.0 / 65.0, 26.0 / 65.0, 38.0 / 65.0, 22.0 / 65.0
 	};
 
-	uint index = (uint(uv.x + RandomOffset.x) % 8) * 8 + uint(uv.y + RandomOffset.y) % 8;
+	uint index = ((uint(uv.x) + RandomOffset.x) % 8) * 8 + (uint(uv.y) + RandomOffset.y) % 8;
 	return DITHER_THRESHOLDS[index]; // Alpha clip
 }
 
