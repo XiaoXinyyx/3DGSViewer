@@ -10,16 +10,12 @@ public class GaussianViewerEditor : Editor
 {
     GaussianViewer gaussianViewer;
 
-    SerializedProperty filePath;
-    SerializedProperty iteration;
     SerializedProperty maxGaussianCount;
     SerializedProperty mesh;
     SerializedProperty material;
 
     private void OnEnable()
     {
-        filePath = serializedObject.FindProperty("filePath");
-        iteration = serializedObject.FindProperty("iteration");
         maxGaussianCount = serializedObject.FindProperty("maxGaussianCount");
         mesh = serializedObject.FindProperty("mesh");
         material = serializedObject.FindProperty("material");
@@ -32,9 +28,24 @@ public class GaussianViewerEditor : Editor
         serializedObject.Update();
 
         // file path
-        EditorGUILayout.PropertyField(filePath);
-        // iteration
-        EditorGUILayout.PropertyField(iteration);
+        EditorGUILayout.BeginHorizontal();
+        EditorGUILayout.LabelField("PLY File Path", GUILayout.Width(100));
+        Rect rect = EditorGUILayout.GetControlRect(GUILayout.Width(400));
+        gaussianViewer.filePath = EditorGUI.TextField(rect, gaussianViewer.filePath);
+        EditorGUILayout.EndHorizontal();
+        // Drag and drop
+        if ((Event.current.type == EventType.DragUpdated
+            || Event.current.type == EventType.DragPerform)
+            && rect.Contains(Event.current.mousePosition))
+        {
+            DragAndDrop.visualMode = DragAndDropVisualMode.Generic;
+            if (Event.current.type == EventType.DragPerform
+                && DragAndDrop.paths != null && DragAndDrop.paths.Length > 0)
+            {
+                gaussianViewer.filePath = DragAndDrop.paths[0];
+            }
+        }
+
         // max gaussian count
         EditorGUILayout.PropertyField(maxGaussianCount);
         // mesh

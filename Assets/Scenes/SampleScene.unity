@@ -406,7 +406,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 6abbcb86e154511418895a11e038a174, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  filePath: D:\Projects\3D-Gaussian-Splatting\output\garden
+  filePath: D:\Projects\3D-Gaussian-Splatting\output\sugar
   iteration: -1
   maxGaussianCount: -1
   mesh: {fileID: 10207, guid: 0000000000000000e000000000000000, type: 0}

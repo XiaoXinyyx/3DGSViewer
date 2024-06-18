@@ -29,12 +29,12 @@ Material:
     - _AlphaClipThreshold: 0.885
     - _AlphaClipThresholdMax: 1
     - _AlphaClipThresholdMin: 0
-    - _AlphaTilt: 1
+    - _AlphaTilt: 0
     - _Cull: 2
     - _DEBUG_MODE: 1
     - _DEBUG_MODE_ON: 0
     - _DebugPointSize: 0.001
-    - _ScaleModifier: 1.37
+    - _ScaleModifier: 1.8
     m_Colors:
     - _PackedData0: {r: 0, g: 0, b: 1, a: 0}
     - _PackedData1: {r: 0.5, g: 0.5, b: 0.5, a: 0}

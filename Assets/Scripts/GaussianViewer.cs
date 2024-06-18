@@ -137,9 +137,7 @@ public class GaussianViewer : MonoBehaviour
 {
     // create a serialized field to store the file path
     [SerializeField]
-    private string filePath = "3D-Gaussian-Splatting\\output\\garden";
-    [SerializeField]
-    private int iteration = -1;
+    public string filePath = "3D-Gaussian-Splatting\\output\\garden";
     [SerializeField]
     private int maxGaussianCount = -1;
     [SerializeField]
@@ -315,46 +313,11 @@ public class GaussianViewer : MonoBehaviour
             return;
         }
 
-        // 
-        string pointCloudDirPath = Path.Combine(filePath, "point_cloud\\");
-        string[] pointCloudDirs = Directory.GetDirectories(pointCloudDirPath);
-        if (pointCloudDirs.Length == 0) 
-        {
-            Debug.LogWarning("No point cloud data found in " + pointCloudDirPath);
-            return;
-        }
-        Array.Sort(pointCloudDirs);
-
-        // Get the .ply file path
-        string plyFilePath = "";
-        if(iteration < 0)
-        {   // Max iteration
-            plyFilePath = Path.Combine(
-                pointCloudDirs[pointCloudDirs.Length - 1], "point_cloud.ply");
-        }
-        else
-        {
-            foreach (string dir in pointCloudDirs)
-            {
-                int iter = Int32.Parse(dir.Substring("iteration_".Length));
-                if (iter == iteration)
-                {
-                    plyFilePath = Path.Combine(dir, "point_cloud.ply");
-                    break;
-                }
-            }
-            if(plyFilePath == "")
-            {
-                Debug.LogWarning("Iteration " + iteration + " not found");
-                return;
-            }
-        }
-
         // Load .ply file
         vertices = new();
         try
         {
-            using (StreamReader file = new(plyFilePath))
+            using (StreamReader file = new(filePath))
             using (BinaryReader bFile = new(file.BaseStream))
             {
                 // Read header
