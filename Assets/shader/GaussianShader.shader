@@ -10,9 +10,12 @@ Shader "3DGS/GaussianShader"
         [HideInInspector]_PackedData1 ("Packed Data 1", Vector) = (0.5, 0.5, 0.5, 0)
 
         _ScaleModifier ("Scale Modifier", Range(1.0, 5.0)) = 4.0
+        [Toggle(DEBUG_MODE_ON)] _DEBUG_MODE_ON("DEBUG MODE", Float) = 0.0
         _DebugPointSize ("Debug Point Radius", Range(0.0, 0.08)) = 0.0027
+        _AlphaTilt ("Alpha Tilt", Range(0.0, 1.0)) = 0.0
         _AlphaClipThresholdMin ("Alpha Clip Threshold Min", Range(0.0, 1.0)) = 0.0
         _AlphaClipThresholdMax ("Alpha Clip Threshold Max", Range(0.0, 1.0)) = 1.0
+
 
         [Enum(UnityEngine.Rendering.CullMode)] _Cull ("Cull Mode", Float) = 1
     }
@@ -32,7 +35,9 @@ Shader "3DGS/GaussianShader"
             #pragma fragment frag
 
             #pragma multi_compile_instancing // GPU instancing
+            #pragma multi_compile _ DEBUG_MODE_ON
             #pragma instancing_options assumeuniformscaling
+            
 
             //#include "UnityCG.cginc"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
@@ -71,6 +76,7 @@ Shader "3DGS/GaussianShader"
 
             float _ScaleModifier;
             float _DebugPointSize;
+            float _AlphaTilt;
             float _AlphaClipThresholdMin;
             float _AlphaClipThresholdMax;
 
@@ -112,8 +118,9 @@ Shader "3DGS/GaussianShader"
                 float4 data0 = UNITY_ACCESS_INSTANCED_PROP(Props, _PackedData0);
                 float4 data1 = UNITY_ACCESS_INSTANCED_PROP(Props, _PackedData1);
                 uint randomValue = uint(data0.x);
-                float3 minAxisEndWS = float3(data0.z, data0.w, data1.w) * _ScaleModifier
-                                      + originPosWS;
+                float3 minAxisVecWS = float3(data0.z, data0.w, data1.w) * _ScaleModifier;
+                float3 minAxisDirWS = normalize(float3(data0.z, data0.w, data1.w));
+                float3 minAxisEndWS = minAxisVecWS + originPosWS; // 端点
                 #if defined(UNITY_INSTANCING_ENABLED)   // Alpha
                     float alpha = data0.y;
                 #else
@@ -123,20 +130,23 @@ Shader "3DGS/GaussianShader"
                 // Initialze color
                 float4 col = float4(0.5, 0.5, 0.5, 1);
 
+                // Alpha Clip
+                clip(min(alpha - _AlphaClipThresholdMin, _AlphaClipThresholdMax - alpha));
+
+                // Alpha Tilt
+                alpha = lerp(_AlphaTilt, 1, alpha); // 提高不透明度，更好地观察半透明的物体
+
                 // Dither transparent
                 float2 screenPos = i.posNDC.xy / i.posNDC.w; // Screen Position
                 uint2 offset = uint2(randomValue / 8, randomValue % 8);
-                float alphaClip = Dither8x8Random_float(screenPos, offset);
-                clip(min(min(
-                    alpha - alphaClip,
-                    alpha - _AlphaClipThresholdMin),
-                    _AlphaClipThresholdMax - alpha)
-                    );
+                float ditherAlphaClip = Dither8x8Random_float(screenPos, offset);
+                clip(alpha - ditherAlphaClip);
 
                 // View dir
                 float3 viewDirWS = GetWorldSpaceNormalizeViewDir(i.posWS.xyz);
                 // Sphere direction vector in world space
-                float3 sphereDirWS = normalize(i.posWS.xyz - originPosWS.xyz);
+                float3 sphereVecWS = i.posWS.xyz - originPosWS.xyz;
+                float3 sphereDirWS = normalize(sphereVecWS);
                 // World space normal
                 // TODO: better normal
                 float3 worldNormal = normalize(cross(i.tangent.xyz, i.binormal.xyz) * i.tangent.w);
@@ -149,11 +159,20 @@ Shader "3DGS/GaussianShader"
                 float3 ligthing = ambient + directLighting;
 
                 // DEBUG
-                float debugValue = saturate( 
+                float3 debug = float3(0,0,0);
+#ifdef DEBUG_MODE_ON
+                const float3 debugColorBlue = float3(0, 0.5, 0.5);
+                const float3 debugColorGreen = float3(0, 0.6, 0);
+                const float3 debugColorRed = float3(0.6, 0, 0);
+                float dirWeight = abs(dot(sphereVecWS, minAxisDirWS)) / length(minAxisVecWS);
+                dirWeight = pow(dirWeight, 1.5);
+                debug += lerp(debugColorRed, debugColorGreen, dirWeight);
+                // Show dot which indicate the shortest axis
+                float dotIntensity = saturate( 
                     step(length(i.posWS.xyz - minAxisEndWS), _DebugPointSize)
                     + step(length(i.posWS.xyz + minAxisEndWS - 2.0 * originPosWS), _DebugPointSize));                
-                float3 debugColor = float3(0, 0.5, 0.5);
-                float3 debug = debugColor * debugValue;
+                debug += debugColorBlue * dotIntensity;
+#endif
 
                 // Combine color
                 col.rgb = ligthing + debug;
