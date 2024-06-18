@@ -15,7 +15,6 @@ public class GaussianViewerEditor : Editor
     SerializedProperty maxGaussianCount;
     SerializedProperty mesh;
     SerializedProperty material;
-    SerializedProperty scaleModifier;
 
     private void OnEnable()
     {
@@ -24,7 +23,6 @@ public class GaussianViewerEditor : Editor
         maxGaussianCount = serializedObject.FindProperty("maxGaussianCount");
         mesh = serializedObject.FindProperty("mesh");
         material = serializedObject.FindProperty("material");
-        scaleModifier = serializedObject.FindProperty("scaleModifier");
     }
 
     public override void OnInspectorGUI()
@@ -50,7 +48,6 @@ public class GaussianViewerEditor : Editor
             gaussianViewer.PreprocessData();
         }
 
-        EditorGUILayout.Slider(scaleModifier, 0.0f, 0.005f, "Scale Modifier");
         if (GUILayout.Button("Apply Changes"))
         {
             gaussianViewer.PreprocessData();

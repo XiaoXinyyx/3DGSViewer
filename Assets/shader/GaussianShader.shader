@@ -6,8 +6,10 @@ Shader "3DGS/GaussianShader"
         
         // hide in inspector
 
-        _PackedData0 ("Packed Data 0", Vector) = (0, 0, 1, 0)
-        _PackedData1 ("Packed Data 1", Vector) = (0.5, 0.5, 0.5, 0)
+        [HideInInspector]_PackedData0 ("Packed Data 0", Vector) = (0, 0, 1, 0)
+        [HideInInspector]_PackedData1 ("Packed Data 1", Vector) = (0.5, 0.5, 0.5, 0)
+
+        _ScaleModifier ("Scale Modifier", Range(1.0, 3.0)) = 1.0
 
         [Enum(UnityEngine.Rendering.CullMode)] _Cull ("Cull Mode", Float) = 1
     }
@@ -64,6 +66,8 @@ Shader "3DGS/GaussianShader"
             sampler2D _MainTex;
             float4 _MainTex_ST;
 
+            float _ScaleModifier;
+
             v2f vert (appdata v)
             {
                 v2f output;
@@ -71,6 +75,8 @@ Shader "3DGS/GaussianShader"
                 UNITY_SETUP_INSTANCE_ID(v);
                 UNITY_TRANSFER_INSTANCE_ID(v, output);
                 
+                v.vertex.xyz *= _ScaleModifier;
+
                 // Position transform
                 VertexPositionInputs packedPos = GetVertexPositionInputs(v.vertex.xyz);
                 

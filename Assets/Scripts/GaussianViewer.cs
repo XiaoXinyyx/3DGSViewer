@@ -18,11 +18,46 @@ public struct PlyVertex
     public float3 normal;
     public float3 f_dc;     // 基础球谐系数
     public float[] f_rest;  // length = 45，9 个球谐系数
-    public float opacity;
-    public float3 scale;
-    public float4 rotation;
+    public float opacity;   // Raw opacity. Don't use directly. Call GetOpacity() instead
+    public float3 scale;    // Raw scaling. Don't use directly. Call GetScale() instead
+    public float4 rotation; // x, y, z, w 右手系
 
     public const int bytesPerVertex = 62 * 4;
+
+    // 
+    // Scale activation function
+    //
+    public Vector3 GetScale()
+    {
+        return new Vector3(
+            Mathf.Exp(scale.x),
+            Mathf.Exp(scale.y),
+            Mathf.Exp(scale.z));
+    }
+
+    public float GetOpacity()
+    {
+        return 1f/(1f + Mathf.Exp(-opacity));
+    }
+
+    // Rotation matrix in Unity left hand system
+    public Matrix4x4 Rotation()
+    {
+        float4 q = math.normalize(rotation);
+        float x = q.x;
+        float y = q.y;
+        float z = q.z;
+        float r = q.w;
+        // 为了转换到左手系，对第三行和第四行取反（对角线上两次取反，不变）
+        Matrix4x4 matrix = new Matrix4x4(
+            new Vector4(1f - 2 * y * y - 2 * z * z,    2f * x * y + 2 * r * z,     -2f * x * z + 2 * r * y,     0), // column 0
+            new Vector4(2f * x * y - 2 * r * z,        1f - 2 * x * x - 2 * z * z, -2f * y * z - 2 * r * x,     0), // column 1
+            new Vector4(-2f * x * z - 2f * r * y,     -2f * y * z + 2f * r * x,     1f - 2 * x * x - 2 * y * y, 0), // column 2
+            new Vector4(0, 0, 0, 1)
+        );
+
+        return matrix;
+    }
 };
 
 [Serializable]
@@ -112,8 +147,6 @@ public class GaussianViewer : MonoBehaviour
     [SerializeField]
     public Material material;
     [SerializeField]
-    public float scaleModifier = 0.01f;
-    [SerializeField]
     public CullBox cullBox = new CullBox(-1, 1, -1, 1, -1, 1);
 
     // Raw PLY data
@@ -167,7 +200,7 @@ public class GaussianViewer : MonoBehaviour
 
         material.enableInstancing = true;
 
-        Matrix4x4 parentRotation = Matrix4x4.TRS(Vector3.zero, transform.rotation, new Vector3(1, 1, 1));
+        Matrix4x4 parentRotation = Matrix4x4.Rotate(transform.rotation); ;
         
         // Prepare instance data
         int maxInstCount = maxGaussianCount < 0 ? vertices.Count : Math.Min(maxGaussianCount, vertices.Count);
@@ -178,22 +211,16 @@ public class GaussianViewer : MonoBehaviour
         {
             PlyVertex vertex = vertices[i];
 
-            // Normalize quaternion
-            float4 normQ = math.normalize(vertex.rotation);
-
-            // Scale Modifier
-            Vector3 scale = new Vector3(vertex.scale.x, vertex.scale.y, vertex.scale.z);   
-            scale = vertex.scale.x > 0 ? scale : -scale;
-            scale *= scaleModifier;
-
-            // To Left coordinate system
-            // https://blog.csdn.net/weixin_40277515/article/details/89323615
-            Vector3 pos = new Vector3(vertex.xyz.x, vertex.xyz.y, -vertex.xyz.z);
-            Quaternion qot = new Quaternion(normQ.x, -normQ.y, -normQ.z, normQ.w);
+            // Scale must be greater than 0
+            Vector3 scale = vertex.GetScale();   
+            
+            // Left coordinate system translate
+            Matrix4x4 Translate = Matrix4x4.Translate(new Vector3(vertex.xyz.x, vertex.xyz.y, -vertex.xyz.z));
 
             // Object to world matrix
-            Matrix4x4 obj2World = new Matrix4x4();
-            obj2World.SetTRS(pos, qot, scale );     // Object to parent object space 
+            // Object to parent object space
+            Matrix4x4 obj2World = 
+                Translate * vertex.Rotation() * Matrix4x4.Scale(scale); 
             obj2World = parentRotation * obj2World; // Apply parent object rotation
 
             // Cull
@@ -223,7 +250,7 @@ public class GaussianViewer : MonoBehaviour
 
             // Add to instance data list
             worldMatrixCache.Add(obj2World);
-            packedData0Cache.Add(new Vector4(randomValue, vertex.opacity, axisDir.x, axisDir.y));
+            packedData0Cache.Add(new Vector4(randomValue, vertex.GetOpacity(), axisDir.x, axisDir.y));
             packedData1Cache.Add(new Vector4(vertex.f_dc.x, vertex.f_dc.y, vertex.f_dc.z, axisDir.z));
             
             // Limit the number of instances
@@ -361,10 +388,11 @@ public class GaussianViewer : MonoBehaviour
                     vertex.scale.x = bFile.ReadSingle();
                     vertex.scale.y = bFile.ReadSingle();
                     vertex.scale.z = bFile.ReadSingle();
+                    // 注意，PLY 文件里的存储顺序是 w, x, y, z，而且是右手坐标系
+                    vertex.rotation.w = bFile.ReadSingle();
                     vertex.rotation.x = bFile.ReadSingle();
                     vertex.rotation.y = bFile.ReadSingle();
                     vertex.rotation.z = bFile.ReadSingle();
-                    vertex.rotation.w = bFile.ReadSingle();
 
                     vertices.Add(vertex);
                 }
