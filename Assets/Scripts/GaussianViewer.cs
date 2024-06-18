@@ -193,14 +193,23 @@ public class GaussianViewer : MonoBehaviour
 
     public void PreprocessData()
     {
-        if(vertices == null || vertices.Count == 0 || material == null)
+        if(vertices == null || vertices.Count == 0 || material == null || mesh == null)
         {
             return;
         }
 
         material.enableInstancing = true;
-
         Matrix4x4 parentRotation = Matrix4x4.Rotate(transform.rotation); ;
+
+        // Comput Radius of the mesh
+        List<Vector3> verticesCache = new();
+        mesh.GetVertices(verticesCache);
+        double meshRadius = 0;
+        foreach(Vector3 v in verticesCache)
+        {
+            meshRadius += v.magnitude;
+        }
+        meshRadius /= verticesCache.Count;
         
         // Prepare instance data
         int maxInstCount = maxGaussianCount < 0 ? vertices.Count : Math.Min(maxGaussianCount, vertices.Count);
@@ -231,27 +240,26 @@ public class GaussianViewer : MonoBehaviour
             int2 randomOffsets = new int2(UnityEngine.Random.Range(0, 8), UnityEngine.Random.Range(0, 8));
             float randomValue = (float)(randomOffsets.x * 8 + randomOffsets.y);
 
-            // Smallest axis dir in world space
-            Vector3 axisDir = Vector3.zero;
+            // Smallest axis vector in world space
+            Vector3 minAxisVec = new Vector3(0,0,0);
             if(scale.x < scale.y && scale.x < scale.z)
             {
-                axisDir[0] = 1;
+                minAxisVec[0] = (float)meshRadius;
             }
             else if(scale.y < scale.z)
             {
-                axisDir[1] = 1;
+                minAxisVec[1] = (float)meshRadius;
             }
             else
             {
-                axisDir[2] = 1;
+                minAxisVec[2] = (float)meshRadius;
             }
-            axisDir = obj2World * axisDir;
-            axisDir.Normalize();
+            minAxisVec = obj2World.MultiplyVector(minAxisVec);
 
             // Add to instance data list
             worldMatrixCache.Add(obj2World);
-            packedData0Cache.Add(new Vector4(randomValue, vertex.GetOpacity(), axisDir.x, axisDir.y));
-            packedData1Cache.Add(new Vector4(vertex.f_dc.x, vertex.f_dc.y, vertex.f_dc.z, axisDir.z));
+            packedData0Cache.Add(new Vector4(randomValue, vertex.GetOpacity(), minAxisVec.x, minAxisVec.y));
+            packedData1Cache.Add(new Vector4(vertex.f_dc.x, vertex.f_dc.y, vertex.f_dc.z, minAxisVec.z));
             
             // Limit the number of instances
             if(worldMatrixCache.Count >= maxInstCount)

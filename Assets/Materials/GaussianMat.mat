@@ -26,7 +26,8 @@ Material:
     m_Ints: []
     m_Floats:
     - _Cull: 2
-    - _ScaleModifier: 1.619
+    - _DebugPointSize: 0.0459
+    - _ScaleModifier: 3
     m_Colors:
     - _PackedData0: {r: 0, g: 0, b: 1, a: 0}
     - _PackedData1: {r: 0.5, g: 0.5, b: 0.5, a: 0}

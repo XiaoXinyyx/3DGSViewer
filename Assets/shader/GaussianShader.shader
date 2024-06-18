@@ -9,7 +9,10 @@ Shader "3DGS/GaussianShader"
         [HideInInspector]_PackedData0 ("Packed Data 0", Vector) = (0, 0, 1, 0)
         [HideInInspector]_PackedData1 ("Packed Data 1", Vector) = (0.5, 0.5, 0.5, 0)
 
-        _ScaleModifier ("Scale Modifier", Range(1.0, 3.0)) = 1.0
+        _ScaleModifier ("Scale Modifier", Range(1.0, 5.0)) = 4.0
+        _DebugPointSize ("Debug Point Radius", Range(0.0, 0.08)) = 0.0027
+        _AlphaClipThresholdMin ("Alpha Clip Threshold Min", Range(0.0, 1.0)) = 0.0
+        _AlphaClipThresholdMax ("Alpha Clip Threshold Max", Range(0.0, 1.0)) = 1.0
 
         [Enum(UnityEngine.Rendering.CullMode)] _Cull ("Cull Mode", Float) = 1
     }
@@ -67,6 +70,9 @@ Shader "3DGS/GaussianShader"
             float4 _MainTex_ST;
 
             float _ScaleModifier;
+            float _DebugPointSize;
+            float _AlphaClipThresholdMin;
+            float _AlphaClipThresholdMax;
 
             v2f vert (appdata v)
             {
@@ -99,11 +105,16 @@ Shader "3DGS/GaussianShader"
             {
                 UNITY_SETUP_INSTANCE_ID(i);
                 
-                // Per instance data
+                // Object orginal point in world space
+                float3 originPosWS = GetObjectToWorldMatrix()._m03_m13_m23;
+
+                // Unpack per instance data
                 float4 data0 = UNITY_ACCESS_INSTANCED_PROP(Props, _PackedData0);
                 float4 data1 = UNITY_ACCESS_INSTANCED_PROP(Props, _PackedData1);
-
-                #if defined(UNITY_INSTANCING_ENABLED)
+                uint randomValue = uint(data0.x);
+                float3 minAxisEndWS = float3(data0.z, data0.w, data1.w) * _ScaleModifier
+                                      + originPosWS;
+                #if defined(UNITY_INSTANCING_ENABLED)   // Alpha
                     float alpha = data0.y;
                 #else
                     float alpha = 1.0;
@@ -114,25 +125,20 @@ Shader "3DGS/GaussianShader"
 
                 // Dither transparent
                 float2 screenPos = i.posNDC.xy / i.posNDC.w; // Screen Position
-                uint randomValue = uint(data0.x);
                 uint2 offset = uint2(randomValue / 8, randomValue % 8);
                 float alphaClip = Dither8x8Random_float(screenPos, offset);
-                clip(alpha - alphaClip);
+                clip(min(min(
+                    alpha - alphaClip,
+                    alpha - _AlphaClipThresholdMin),
+                    _AlphaClipThresholdMax - alpha)
+                    );
 
                 // View dir
                 float3 viewDirWS = GetWorldSpaceNormalizeViewDir(i.posWS.xyz);
-
-                // Object orginal point in world space
-                float3 originWS = GetObjectToWorldMatrix()._m03_m13_m23;
-
                 // Sphere direction vector in world space
-                float3 sphereDirWS = normalize(i.posWS.xyz - originWS.xyz);
-
-                // Shortest axis dir in world space
-                float3 shortestAxisDir = (float3(data0.z, data0.w, data1.w));
-
+                float3 sphereDirWS = normalize(i.posWS.xyz - originPosWS.xyz);
                 // World space normal
-                // TODO better normal
+                // TODO: better normal
                 float3 worldNormal = normalize(cross(i.tangent.xyz, i.binormal.xyz) * i.tangent.w);
 
                 // Simple Lighting
@@ -140,15 +146,17 @@ Shader "3DGS/GaussianShader"
                 float3 ambient = float3(0.2, 0.2, 0.2); // Simple ambient
                 Light light = GetMainLight();
                 float3 directLighting = LightingLambert(light.color, light.direction, worldNormal);
+                float3 ligthing = ambient + directLighting;
 
                 // DEBUG
-                float3 debugColorRed = float3(0, 0.5, 0.5);
-                float debugValue = abs(dot(sphereDirWS, shortestAxisDir));
-                debugValue = step(0.95, debugValue);
-                float3 debug = debugColorRed * debugValue;
+                float debugValue = saturate( 
+                    step(length(i.posWS.xyz - minAxisEndWS), _DebugPointSize)
+                    + step(length(i.posWS.xyz + minAxisEndWS - 2.0 * originPosWS), _DebugPointSize));                
+                float3 debugColor = float3(0, 0.5, 0.5);
+                float3 debug = debugColor * debugValue;
 
                 // Combine color
-                col.rgb = ambient + directLighting + debug;
+                col.rgb = ligthing + debug;
                 return col;
             }
             ENDHLSL
