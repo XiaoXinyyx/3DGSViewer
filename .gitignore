@@ -9,7 +9,10 @@
 /[Bb]uilds/
 /[Ll]ogs/
 /[Uu]ser[Ss]ettings/
-/[Pp]ackages/
+/[Pp]ackages/com.unity.render-pipelines.core@14.0.11
+/[Pp]ackages/com.unity.render-pipelines.universal@14.0.11
+/[Pp]ackages/com.unity.render-pipelines.universal-config@14.0.10
+/[Pp]ackages/com.unity.shadergraph@14.0.11
 
 # MemoryCaptures can get excessive in size.
 # They also could contain extremely sensitive data
