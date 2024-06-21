@@ -6,10 +6,10 @@ Shader "3DGS/GaussianShader"
         
         // hide in inspector
 
-        [HideInInspector]_PackedData0 ("Packed Data 0", Vector) = (0, 0, 1, 0)
+        [HideInInspector]_PackedData0 ("Packed Data 0", Vector) = (0, 1, 1, 0)
         [HideInInspector]_PackedData1 ("Packed Data 1", Vector) = (0.5, 0.5, 0.5, 0)
 
-        _ScaleModifier ("Scale Modifier", Range(1.0, 5.0)) = 4.0
+        _ScaleModifier ("Scale Modifier", Range(0.0, 5.0)) = 4.0
         [Toggle(DEBUG_MODE_ON)] _DEBUG_MODE_ON("DEBUG MODE", Float) = 0.0
         _DebugPointSize ("Debug Point Radius", Range(0.0, 0.08)) = 0.0027
         _AlphaTilt ("Alpha Tilt", Range(0.0, 1.0)) = 0.0

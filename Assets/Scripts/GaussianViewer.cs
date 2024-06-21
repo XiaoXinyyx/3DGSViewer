@@ -10,6 +10,9 @@ using UnityEditor;
 using System.Drawing;
 using static GaussianViewer;
 using UnityEngine.UIElements;
+using UnityEngine.Rendering.Universal;
+using UnityEngine.Rendering;
+using UnityEngine.Assertions;
 
 
 public struct PlyVertex
@@ -133,6 +136,8 @@ public struct CullBox
     }
 }
 
+
+// 不能在编辑模式下启动，会非常卡
 public class GaussianViewer : MonoBehaviour
 {
     // create a serialized field to store the file path
@@ -163,10 +168,37 @@ public class GaussianViewer : MonoBehaviour
         objectToWorldArray = new();
         LoadPointCloud();
         PreprocessData();
+        
     }
+
+    RenderParams tempParam;
 
     private void OnEnable()
     {
+        tempParam = new RenderParams(material);
+        tempParam.receiveShadows = false;
+        tempParam.lightProbeProxyVolume = null;
+        tempParam.lightProbeUsage = UnityEngine.Rendering.LightProbeUsage.Off;
+        tempParam.motionVectorMode = UnityEngine.MotionVectorGenerationMode.ForceNoMotion;
+        tempParam.reflectionProbeUsage = UnityEngine.Rendering.ReflectionProbeUsage.Off;
+        tempParam.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+
+        if(objectToWorldArray == null)
+        {
+            objectToWorldArray = new();
+        }
+        if(renderParamList == null)
+        {
+            renderParamList = new();
+        }
+
+        RenderPipelineManager.beginFrameRendering += OnBeginFrameRendering;
+    }
+
+
+    private void OnDisable()
+    {
+        RenderPipelineManager.beginFrameRendering -= OnBeginFrameRendering;
     }
 
     void OnDrawGizmos()
@@ -175,19 +207,31 @@ public class GaussianViewer : MonoBehaviour
         Gizmos.DrawWireCube(transform.position + cullBox.Center(), cullBox.Size());
     }
 
+
     // Update is called once per frame
     void Update()
     {
+    }
+
+    private void OnDestroy() 
+    {
+        
+    }
+
+    void OnBeginFrameRendering(ScriptableRenderContext context, Camera[] cameras)
+    {
+        //Debug.Log(camera.name);
+
         if (material == null || mesh == null)
             return;
 
         for (int i = 0; i < renderParamList.Count; i += 1)
         {
+            //Graphics.RenderMeshInstanced(tempParam, mesh, 0, objectToWorldArray[i]);
             Graphics.RenderMeshInstanced(renderParamList[i], mesh, 0, objectToWorldArray[i]);
         }
     }
 
-    private void OnDestroy() {}
 
     public void PreprocessData()
     {
@@ -323,7 +367,8 @@ public class GaussianViewer : MonoBehaviour
                 // Read header
                 string line = file.ReadLine();
                 int headerSize = line.Length + 1;
-                int numVertices = 0; // Number of vertices
+                int numVertices = 0;    // Number of vertices
+                int vertexDataSize = 0; // Number of bytes per vertex element
                 while (!line.Contains("end_header"))
                 {
                     line = file.ReadLine();
@@ -333,7 +378,13 @@ public class GaussianViewer : MonoBehaviour
                         string[] tokens = line.Split(' ');
                         numVertices = int.Parse(tokens[2]);
                     }
+                    if (line.Contains("property float"))
+                    {
+                        vertexDataSize += sizeof(float);
+                    }
                 }
+                Assert.IsTrue(vertexDataSize >= PlyVertex.bytesPerVertex, "Vertex data size is too small");
+                int restBytes = vertexDataSize - PlyVertex.bytesPerVertex;
 
                 // Read vertices
                 bFile.BaseStream.Seek(headerSize, SeekOrigin.Begin);
@@ -364,6 +415,9 @@ public class GaussianViewer : MonoBehaviour
                     vertex.rotation.x = bFile.ReadSingle();
                     vertex.rotation.y = bFile.ReadSingle();
                     vertex.rotation.z = bFile.ReadSingle();
+
+                    // Skip the rest of the vertex data
+                    bFile.ReadBytes(restBytes);
 
                     vertices.Add(vertex);
                 }
