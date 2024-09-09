@@ -408,7 +408,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   filePath: C:/Users/YangYixin/Downloads/point_cloud.ply
   maxGaussianCount: -1
-  mesh: {fileID: 10207, guid: 0000000000000000e000000000000000, type: 0}
+  mesh: {fileID: -2432090755550338912, guid: e65d626a61a3d4741867970b659fba1e, type: 3}
   material: {fileID: 2100000, guid: 23a2fbf5e86b7e247b45a2c860714a04, type: 2}
   cullBox:
     x1: -16.851395
