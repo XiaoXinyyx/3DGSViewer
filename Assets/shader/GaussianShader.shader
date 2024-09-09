@@ -4,18 +4,12 @@ Shader "3DGS/GaussianShader"
     {
         //_MainTex ("Texture", 2D) = "white" {}
         
-        // hide in inspector
-
-        [HideInInspector]_PackedData0 ("Packed Data 0", Vector) = (0, 1, 1, 0)
-        [HideInInspector]_PackedData1 ("Packed Data 1", Vector) = (0.5, 0.5, 0.5, 0)
-
         _ScaleModifier ("Scale Modifier", Range(0.0, 5.0)) = 4.0
         [Toggle(DEBUG_MODE_ON)] _DEBUG_MODE_ON("DEBUG MODE", Float) = 0.0
         _DebugPointSize ("Debug Point Radius", Range(0.0, 0.08)) = 0.0027
         _AlphaTilt ("Alpha Tilt", Range(0.0, 1.0)) = 0.0
         _AlphaClipThresholdMin ("Alpha Clip Threshold Min", Range(0.0, 1.0)) = 0.0
         _AlphaClipThresholdMax ("Alpha Clip Threshold Max", Range(0.0, 1.0)) = 1.0
-
 
         [Enum(UnityEngine.Rendering.CullMode)] _Cull ("Cull Mode", Float) = 1
     }
@@ -38,8 +32,10 @@ Shader "3DGS/GaussianShader"
             #pragma multi_compile _ DEBUG_MODE_ON
             #pragma instancing_options assumeuniformscaling
             
+            #define UNITY_INDIRECT_DRAW_ARGS IndirectDrawIndexedArgs
 
-            //#include "UnityCG.cginc"
+            #include "UnityIndirect.cginc"
+
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
             #include "CustomShaderFunction.hlsl"
@@ -49,8 +45,8 @@ Shader "3DGS/GaussianShader"
                 //float2 uv : TEXCOORD0;
                 float4 vertex  : POSITION;
                 float3 normal  : NORMAL;
-                float4 tangent : TANGENT;
-                UNITY_VERTEX_INPUT_INSTANCE_ID // Instance ID
+                uint svInstanceID : SV_InstanceID;
+                // UNITY_VERTEX_INPUT_INSTANCE_ID // Instance ID
             };
 
             struct v2f
@@ -59,17 +55,13 @@ Shader "3DGS/GaussianShader"
                 float4 vertex   : SV_POSITION;
                 float4 posNDC   : TEXCOORD0;
                 float3 posWS    : TEXCOORD1;
-                float4 tangent  : TEXCOORD2;
-                float3 binormal : TEXCOORD3;
-                UNITY_VERTEX_INPUT_INSTANCE_ID // Instance ID
+                float3 normalWS : NORMAL;
+                uint svInstanceID : SV_InstanceID;
+                // UNITY_VERTEX_INPUT_INSTANCE_ID // Instance ID
             };
 
-            UNITY_INSTANCING_BUFFER_START(Props)
-                // randomValue, vertex.opacity, ,0
-                UNITY_DEFINE_INSTANCED_PROP(float4, _PackedData0)
-                // vertex.f_dc.x, vertex.f_dc.y, vertex.f_dc.z, 0
-                UNITY_DEFINE_INSTANCED_PROP(float4, _PackedData1)
-            UNITY_INSTANCING_BUFFER_END(Props)
+            StructuredBuffer<float4> _PackedData0;
+            StructuredBuffer<float4> _PackedData1;
 
             sampler2D _MainTex;
             float4 _MainTex_ST;
@@ -83,25 +75,30 @@ Shader "3DGS/GaussianShader"
             v2f vert (appdata v)
             {
                 v2f output;
+                output.svInstanceID = v.svInstanceID;
 
-                UNITY_SETUP_INSTANCE_ID(v);
-                UNITY_TRANSFER_INSTANCE_ID(v, output);
+                InitIndirectDrawArgs(0);
+                uint instanceID = GetIndirectInstanceID(v.svInstanceID);
+                uint instanceCount = GetIndirectInstanceCount();
+
+                //UNITY_SETUP_INSTANCE_ID(v);
+                //UNITY_TRANSFER_INSTANCE_ID(v, output);
                 
                 v.vertex.xyz *= _ScaleModifier;
 
                 // Position transform
-                VertexPositionInputs packedPos = GetVertexPositionInputs(v.vertex.xyz);
+                VertexPositionInputs packedPos = GetVertexPositionInputsIndirect(v.vertex.xyz, instanceID);
                 
-                // Normal, tangent transform
-                float3 worldNormal = TransformObjectToWorldDir(v.normal.xyz, false);
-                float3 worldTangent = TransformObjectToWorldDir(v.tangent.xyz, false);
-                float3 worldBinormal = cross(worldNormal, worldTangent) * v.tangent.w;
+                // World normal
+                float3 scale = _PackedData1[instanceID].xyz;
+                float3x3 normalToWorld = GetNormalTransformMatrix(_ObjectToWorldBuffer[instanceID], scale);
+                float3 worldNormal = mul(normalToWorld, v.normal.xyz);
+                worldNormal = normalize(worldNormal);
 
                 output.vertex = packedPos.positionCS;
                 output.posNDC = packedPos.positionNDC;
                 output.posWS = packedPos.positionWS;
-                output.tangent = float4(worldTangent, v.tangent.w);
-                output.binormal = worldBinormal;
+                output.normalWS = worldNormal;
 
                 //o.uv = TRANSFORM_TEX(v.uv, _MainTex);
                 return output;
@@ -109,23 +106,25 @@ Shader "3DGS/GaussianShader"
 
             float4 frag (v2f i) : SV_Target
             {
-                UNITY_SETUP_INSTANCE_ID(i);
+                // UNITY_SETUP_INSTANCE_ID(i);
                 
+                InitIndirectDrawArgs(0);
+                uint instanceID = GetIndirectInstanceID(i.svInstanceID);
+                uint instanceCount = GetIndirectInstanceCount();
+
                 // Object orginal point in world space
-                float3 originPosWS = GetObjectToWorldMatrix()._m03_m13_m23;
+                float3 originPosWS = _ObjectToWorldBuffer[instanceID]._m03_m13_m23;
 
                 // Unpack per instance data
-                float4 data0 = UNITY_ACCESS_INSTANCED_PROP(Props, _PackedData0);
-                float4 data1 = UNITY_ACCESS_INSTANCED_PROP(Props, _PackedData1);
+				float4 data0 = _PackedData0[instanceID];
+                float4 data1 = _PackedData1[instanceID];
+
                 uint randomValue = uint(data0.x);
                 float3 minAxisVecWS = float3(data0.z, data0.w, data1.w) * _ScaleModifier;
                 float3 minAxisDirWS = normalize(float3(data0.z, data0.w, data1.w));
                 float3 minAxisEndWS = minAxisVecWS + originPosWS; // ¶Ëµã
-                #if defined(UNITY_INSTANCING_ENABLED)   // Alpha
-                    float alpha = data0.y;
-                #else
-                    float alpha = 1.0;
-                #endif
+                
+                float alpha = data0.y;  // Alpha
 
                 // Initialze color
                 float4 col = float4(0.5, 0.5, 0.5, 1);
@@ -148,8 +147,7 @@ Shader "3DGS/GaussianShader"
                 float3 sphereVecWS = i.posWS.xyz - originPosWS.xyz;
                 float3 sphereDirWS = normalize(sphereVecWS);
                 // World space normal
-                // TODO: better normal
-                float3 worldNormal = normalize(cross(i.tangent.xyz, i.binormal.xyz) * i.tangent.w);
+                float3 worldNormal = normalize(i.normalWS);
 
                 // Simple Lighting
                 // TODO: Better lighting
@@ -176,6 +174,7 @@ Shader "3DGS/GaussianShader"
 
                 // Combine color
                 col.rgb = ligthing + debug;
+
                 return col;
             }
             ENDHLSL

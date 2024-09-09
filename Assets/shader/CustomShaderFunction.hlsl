@@ -1,6 +1,30 @@
 #ifndef CUSTOMSHADERFUNCTION_INCLUDED
 #define CUSTOMSHADERFUNCTION_INCLUDED
 
+StructuredBuffer<float4x4> _ObjectToWorldBuffer;
+
+float3 TransformObjectToWorldIndirect(float3 positionOS, uint instanceID)
+{
+#if defined(SHADER_STAGE_RAY_TRACING)
+	return 0; // Not supported
+#else
+	return mul(_ObjectToWorldBuffer[instanceID], float4(positionOS, 1.0)).xyz;
+#endif
+}
+
+VertexPositionInputs GetVertexPositionInputsIndirect(float3 positionOS, uint instanceID)
+{
+	VertexPositionInputs input;
+	input.positionWS = TransformObjectToWorldIndirect(positionOS, instanceID);
+	input.positionVS = TransformWorldToView(input.positionWS);
+	input.positionCS = TransformWorldToHClip(input.positionWS);
+
+	float4 ndc = input.positionCS * 0.5f;
+	input.positionNDC.xy = float2(ndc.x, ndc.y * _ProjectionParams.x) + ndc.w;
+	input.positionNDC.zw = input.positionCS.zw;
+
+	return input;
+}
 
 VertexPositionInputs TransformVertexPositions(float3 positionOS)
 {
@@ -16,6 +40,19 @@ VertexPositionInputs TransformVertexPositions(float3 positionOS)
 	return input;
 }
 
+// 计算非均匀缩放的法线变换矩阵
+float3x3 GetNormalTransformMatrix(float3x3 Matrix, float3 scale)
+{
+	float3x3 scaleInverseSquared = float3x3(
+		1.0 / (scale.x * scale.x), 0.0, 0.0,
+		0.0, 1.0 / (scale.y * scale.y), 0.0,
+		0.0, 0.0, 1.0 / (scale.z * scale.z)
+	);
+
+	float3x3 normalMatrix = mul(Matrix, scaleInverseSquared);
+
+	return normalMatrix;
+}
 
 float Dither8x8Random_float(float2 ScreenPosition, uint2 RandomOffset)
 {

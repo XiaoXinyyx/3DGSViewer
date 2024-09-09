@@ -153,52 +153,41 @@ public class GaussianViewer : MonoBehaviour
     public CullBox cullBox = new CullBox(-1, 1, -1, 1, -1, 1);
 
     // Raw PLY data
-    public List<PlyVertex> vertices;
+    public List<PlyVertex> vertices; // 高斯点的数据
 
-    // 用于分批渲染的数据
-    private List<RenderParams> renderParamList;
-    public List<Matrix4x4[]> objectToWorldArray;
+    // 用于渲染的数据
+    private RenderParams renderParams;
 
-    public const int maxInstPerBatch = 1024 * 30;
+    // Command buffer
+    GraphicsBuffer commandBuf;
+    GraphicsBuffer.IndirectDrawIndexedArgs[] commandData;
+
+    // Compute buffer
+    private ComputeBuffer obj2WorldBuffer;
+    private ComputeBuffer packedData0Buffer;
+    private ComputeBuffer packedData1Buffer;
 
     // Start is called before the first frame update
     void Start()
     {
-        renderParamList = new();
-        objectToWorldArray = new();
+        // Command buffer
+        commandBuf = new GraphicsBuffer(
+            GraphicsBuffer.Target.IndirectArguments,
+            1,
+            GraphicsBuffer.IndirectDrawIndexedArgs.size);
+        commandData = new GraphicsBuffer.IndirectDrawIndexedArgs[1];
+
         LoadPointCloud();
         PreprocessData();
-        
     }
-
-    RenderParams tempParam;
 
     private void OnEnable()
     {
-        tempParam = new RenderParams(material);
-        tempParam.receiveShadows = false;
-        tempParam.lightProbeProxyVolume = null;
-        tempParam.lightProbeUsage = UnityEngine.Rendering.LightProbeUsage.Off;
-        tempParam.motionVectorMode = UnityEngine.MotionVectorGenerationMode.ForceNoMotion;
-        tempParam.reflectionProbeUsage = UnityEngine.Rendering.ReflectionProbeUsage.Off;
-        tempParam.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-
-        if(objectToWorldArray == null)
-        {
-            objectToWorldArray = new();
-        }
-        if(renderParamList == null)
-        {
-            renderParamList = new();
-        }
-
-        RenderPipelineManager.beginFrameRendering += OnBeginFrameRendering;
     }
 
 
     private void OnDisable()
     {
-        RenderPipelineManager.beginFrameRendering -= OnBeginFrameRendering;
     }
 
     void OnDrawGizmos()
@@ -211,26 +200,33 @@ public class GaussianViewer : MonoBehaviour
     // Update is called once per frame
     void Update()
     {
+        //Debug.Log(camera.name);
+        if (material == null || mesh == null)
+            return;
+
+        commandData[0].indexCountPerInstance = mesh.GetIndexCount(0);
+        commandData[0].instanceCount = (uint)packedData0Buffer.count;
+        commandBuf.SetData(commandData);
+
+        Graphics.RenderMeshIndirect(renderParams, mesh, commandBuf, 1);
     }
 
     private void OnDestroy() 
     {
-        
+        obj2WorldBuffer?.Release();
+        packedData0Buffer?.Release();
+        packedData1Buffer?.Release();
+        obj2WorldBuffer = null;
+        packedData0Buffer = null;
+        packedData1Buffer = null;
+
+        commandBuf?.Release();
+        commandBuf = null;
     }
 
-    void OnBeginFrameRendering(ScriptableRenderContext context, Camera[] cameras)
-    {
-        //Debug.Log(camera.name);
-
-        if (material == null || mesh == null)
-            return;
-
-        for (int i = 0; i < renderParamList.Count; i += 1)
-        {
-            //Graphics.RenderMeshInstanced(tempParam, mesh, 0, objectToWorldArray[i]);
-            Graphics.RenderMeshInstanced(renderParamList[i], mesh, 0, objectToWorldArray[i]);
-        }
-    }
+    //void OnBeginFrameRendering(ScriptableRenderContext context, Camera[] cameras)
+    //{
+    //}
 
 
     public void PreprocessData()
@@ -243,7 +239,7 @@ public class GaussianViewer : MonoBehaviour
         material.enableInstancing = true;
         Matrix4x4 parentRotation = Matrix4x4.Rotate(transform.rotation); ;
 
-        // Comput Radius of the mesh
+        // Compute Radius of the sphere mesh
         List<Vector3> verticesCache = new();
         mesh.GetVertices(verticesCache);
         double meshRadius = 0;
@@ -301,7 +297,7 @@ public class GaussianViewer : MonoBehaviour
             // Add to instance data list
             worldMatrixCache.Add(obj2World);
             packedData0Cache.Add(new Vector4(randomValue, vertex.GetOpacity(), minAxisVec.x, minAxisVec.y));
-            packedData1Cache.Add(new Vector4(vertex.f_dc.x, vertex.f_dc.y, vertex.f_dc.z, minAxisVec.z));
+            packedData1Cache.Add(new Vector4(scale.x, scale.y, scale.z, minAxisVec.z));
             
             // Limit the number of instances
             if(worldMatrixCache.Count >= maxInstCount)
@@ -310,42 +306,39 @@ public class GaussianViewer : MonoBehaviour
             }
         }
 
-        // --------------------- Split into batches ---------------------
-        int batchCount = (worldMatrixCache.Count + maxInstPerBatch - 1) / maxInstPerBatch;
-        int resCount = worldMatrixCache.Count % maxInstPerBatch;
-        if (resCount == 0)
-            resCount = maxInstPerBatch;
+        // Render parameters
+        renderParams = new(material);
+        renderParams.receiveShadows = false;
+        renderParams.lightProbeProxyVolume = null;
+        renderParams.lightProbeUsage = UnityEngine.Rendering.LightProbeUsage.Off;
+        renderParams.motionVectorMode = UnityEngine.MotionVectorGenerationMode.ForceNoMotion;
+        renderParams.reflectionProbeUsage = UnityEngine.Rendering.ReflectionProbeUsage.Off;
+        renderParams.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        renderParams.matProps = new MaterialPropertyBlock();
+        renderParams.worldBounds = new Bounds(cullBox.Center(), cullBox.Size());
+        
+        // Compute Buffer
+        packedData0Buffer?.Release();
+        packedData0Buffer = new ComputeBuffer(packedData0Cache.Count, sizeof(float) * 4);
+        packedData0Buffer.SetData<Vector4>(packedData0Cache);
+        material.SetBuffer("_PackedData0", packedData0Buffer);
 
-        objectToWorldArray.Clear();
-        renderParamList.Clear();
-        for (int i = 0; i < batchCount; i++)
-        {
-            int instCount = i == batchCount - 1 ? resCount : maxInstPerBatch;
+        packedData1Buffer?.Release();
+        packedData1Buffer = new ComputeBuffer(packedData1Cache.Count, sizeof(float) * 4);
+        packedData1Buffer.SetData<Vector4>(packedData1Cache);
+        material.SetBuffer("_PackedData1", packedData1Buffer);
 
-            // Obj2World matrix
-            objectToWorldArray.Add(new Matrix4x4[instCount]);
-            worldMatrixCache.CopyTo(i * maxInstPerBatch, objectToWorldArray[i], 0, instCount);
+        obj2WorldBuffer?.Release();
+        obj2WorldBuffer = new ComputeBuffer(worldMatrixCache.Count, sizeof(float) * 16);
+        obj2WorldBuffer.SetData<Matrix4x4>(worldMatrixCache);
+        material.SetBuffer("_ObjectToWorldBuffer", obj2WorldBuffer);
 
-            // Render parameters
-            Vector4[] vectorCache = new Vector4[instCount];
-            RenderParams renderParam = new RenderParams(material);
-            renderParam.receiveShadows = false;
-            renderParam.lightProbeProxyVolume = null;
-            renderParam.lightProbeUsage = UnityEngine.Rendering.LightProbeUsage.Off;
-            renderParam.motionVectorMode = UnityEngine.MotionVectorGenerationMode.ForceNoMotion;
-            renderParam.reflectionProbeUsage = UnityEngine.Rendering.ReflectionProbeUsage.Off;
-            renderParam.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-            renderParam.matProps = new MaterialPropertyBlock();
-            packedData0Cache.CopyTo(i * maxInstPerBatch, vectorCache, 0, instCount);
-            renderParam.matProps.SetVectorArray("_PackedData0", vectorCache);
-            packedData1Cache.CopyTo(i * maxInstPerBatch, vectorCache, 0, instCount);
-            renderParam.matProps.SetVectorArray("_PackedData1", vectorCache);
-            renderParamList.Add(renderParam);
-        }
-        // --------------------------------------------------------------
+        Debug.Log("PreprocessData Done: Rendering" + worldMatrixCache.Count + " objects");
+    }
 
-        int totalInstForRender = (batchCount - 1) * maxInstPerBatch + resCount;
-        Debug.Log("PreprocessData Done: " + totalInstForRender + " objects");
+    public int GetRenderingGaussianCount()
+    {
+        return obj2WorldBuffer != null ? obj2WorldBuffer.count : 0;
     }
 
     // 读取 PLY 文件

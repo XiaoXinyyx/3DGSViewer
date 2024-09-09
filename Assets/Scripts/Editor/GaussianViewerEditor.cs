@@ -66,15 +66,8 @@ public class GaussianViewerEditor : Editor
 
         GUILayout.Space(10);
         int loadGaussianCount = gaussianViewer.vertices != null ? gaussianViewer.vertices.Count : 0;
-        int renderGaussianCount = 0;
-        if (gaussianViewer.objectToWorldArray != null && gaussianViewer.objectToWorldArray.Count > 0)
-        {
-            renderGaussianCount =
-                (gaussianViewer.objectToWorldArray.Count - 1) * GaussianViewer.maxInstPerBatch
-                + gaussianViewer.objectToWorldArray.Last().Length;
-        }
         GUILayout.TextArea("Total Gaussians : " + loadGaussianCount
-            + "\n Current Rendering Gaussians : " + renderGaussianCount);
+            + "\n Current Rendering Gaussians : " + gaussianViewer.GetRenderingGaussianCount());
 
         serializedObject.ApplyModifiedProperties();
     }
