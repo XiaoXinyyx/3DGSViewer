@@ -5,6 +5,7 @@ Shader "3DGS/GaussianShader"
         //_MainTex ("Texture", 2D) = "white" {}
         
         _ScaleModifier ("Scale Modifier", Range(0.0, 5.0)) = 4.0
+        
         [Toggle(DEBUG_MODE_ON)] _DEBUG_MODE_ON("DEBUG MODE", Float) = 0.0
         _DebugPointSize ("Debug Point Radius", Range(0.0, 0.08)) = 0.0027
         _AlphaTilt ("Alpha Tilt", Range(0.0, 1.0)) = 0.0
@@ -67,6 +68,7 @@ Shader "3DGS/GaussianShader"
             float4 _MainTex_ST;
 
             float _ScaleModifier;
+
             float _DebugPointSize;
             float _AlphaTilt;
             float _AlphaClipThresholdMin;
@@ -83,7 +85,7 @@ Shader "3DGS/GaussianShader"
 
                 //UNITY_SETUP_INSTANCE_ID(v);
                 //UNITY_TRANSFER_INSTANCE_ID(v, output);
-                
+
                 v.vertex.xyz *= _ScaleModifier;
 
                 // Position transform

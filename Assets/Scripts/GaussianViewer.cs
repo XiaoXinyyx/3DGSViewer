@@ -25,7 +25,8 @@ public struct PlyVertex
     public float3 scale;    // Raw scaling. Don't use directly. Call GetScale() instead
     public float4 rotation; // x, y, z, w 右手系
 
-    public const int bytesPerVertex = 62 * 4;
+    public const int bytesPerVertex3D = 62 * 4;     // 3D Gaussian splatting
+    public const int bytesPerVertex2D = 61 * 4;   // 2D Gaussian splatting
 
     // 
     // Scale activation function
@@ -357,6 +358,8 @@ public class GaussianViewer : MonoBehaviour
             using (StreamReader file = new(filePath))
             using (BinaryReader bFile = new(file.BaseStream))
             {
+                bool use2dGaussian= true; // 2D Gaussian splatting
+
                 // Read header
                 string line = file.ReadLine();
                 int headerSize = line.Length + 1;
@@ -374,10 +377,15 @@ public class GaussianViewer : MonoBehaviour
                     if (line.Contains("property float"))
                     {
                         vertexDataSize += sizeof(float);
+                        if (line.Contains("scale_2"))
+                        {
+                            use2dGaussian = false;
+                        }
                     }
                 }
-                Assert.IsTrue(vertexDataSize >= PlyVertex.bytesPerVertex, "Vertex data size is too small");
-                int restBytes = vertexDataSize - PlyVertex.bytesPerVertex;
+                int validBytesPerVertex = use2dGaussian ? PlyVertex.bytesPerVertex2D : PlyVertex.bytesPerVertex3D;
+                Assert.IsTrue(vertexDataSize >= validBytesPerVertex, "Vertex data size is too small");
+                int restBytes = vertexDataSize - validBytesPerVertex;
 
                 // Read vertices
                 bFile.BaseStream.Seek(headerSize, SeekOrigin.Begin);
@@ -402,7 +410,11 @@ public class GaussianViewer : MonoBehaviour
                     vertex.opacity = bFile.ReadSingle();
                     vertex.scale.x = bFile.ReadSingle();
                     vertex.scale.y = bFile.ReadSingle();
-                    vertex.scale.z = bFile.ReadSingle();
+                    if (use2dGaussian)
+                        vertex.scale.z = -10f;
+                    else
+                        vertex.scale.z = bFile.ReadSingle();
+
                     // 注意，PLY 文件里的存储顺序是 w, x, y, z，而且是右手坐标系
                     vertex.rotation.w = bFile.ReadSingle();
                     vertex.rotation.x = bFile.ReadSingle();
